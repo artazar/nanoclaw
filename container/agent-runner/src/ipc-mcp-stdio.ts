@@ -69,7 +69,7 @@ server.tool(
 
 server.tool(
   'send_photo',
-  'Send a photo/image to the user or group. The file must be saved in /workspace/group/ first (e.g. /workspace/group/attachments/photo.jpg). Optionally include a caption.',
+  'Send a photo/image to the user or group. Save the file to /workspace/group/attachments/ first, then call this tool with the path. Supports an optional caption with Telegram Markdown formatting.',
   {
     photo_path: z
       .string()
