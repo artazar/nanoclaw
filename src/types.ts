@@ -88,6 +88,8 @@ export interface Channel {
   name: string;
   connect(): Promise<void>;
   sendMessage(jid: string, text: string): Promise<void>;
+  // Optional: send a photo/image file. photoPath is the host filesystem path.
+  sendPhoto?(jid: string, photoPath: string, caption?: string): Promise<void>;
   isConnected(): boolean;
   ownsJid(jid: string): boolean;
   disconnect(): Promise<void>;

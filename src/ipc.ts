@@ -6,12 +6,13 @@ import { CronExpressionParser } from 'cron-parser';
 import { DATA_DIR, IPC_POLL_INTERVAL, TIMEZONE } from './config.js';
 import { AvailableGroup } from './container-runner.js';
 import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
-import { isValidGroupFolder } from './group-folder.js';
+import { isValidGroupFolder, resolveGroupFolderPath } from './group-folder.js';
 import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
 
 export interface IpcDeps {
   sendMessage: (jid: string, text: string) => Promise<void>;
+  sendPhoto: (jid: string, photoPath: string, caption?: string) => Promise<void>;
   registeredGroups: () => Record<string, RegisteredGroup>;
   registerGroup: (jid: string, group: RegisteredGroup) => void;
   syncGroups: (force: boolean) => Promise<void>;
@@ -90,6 +91,33 @@ export function startIpcWatcher(deps: IpcDeps): void {
                   logger.warn(
                     { chatJid: data.chatJid, sourceGroup },
                     'Unauthorized IPC message attempt blocked',
+                  );
+                }
+              } else if (data.type === 'photo' && data.chatJid && data.photoPath) {
+                // Authorization: same as text messages
+                const targetGroup = registeredGroups[data.chatJid];
+                if (
+                  isMain ||
+                  (targetGroup && targetGroup.folder === sourceGroup)
+                ) {
+                  // Translate container path (/workspace/group/...) to host path
+                  const containerPrefix = '/workspace/group/';
+                  let hostPath: string = data.photoPath;
+                  if (data.photoPath.startsWith(containerPrefix)) {
+                    hostPath = path.join(
+                      resolveGroupFolderPath(sourceGroup),
+                      data.photoPath.slice(containerPrefix.length),
+                    );
+                  }
+                  await deps.sendPhoto(data.chatJid, hostPath, data.caption);
+                  logger.info(
+                    { chatJid: data.chatJid, sourceGroup, hostPath },
+                    'IPC photo sent',
+                  );
+                } else {
+                  logger.warn(
+                    { chatJid: data.chatJid, sourceGroup },
+                    'Unauthorized IPC photo attempt blocked',
                   );
                 }
               }
