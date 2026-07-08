@@ -23,9 +23,62 @@ export interface TelegramChannelOpts {
 }
 
 /**
- * Send a message with Telegram Markdown parse mode, falling back to plain text.
- * Claude's output naturally matches Telegram's Markdown v1 format:
- *   *bold*, _italic_, `code`, ```code blocks```, [links](url)
+ * Convert Telegram Markdown v1 (and common **double** asterisk variants) to Telegram HTML.
+ * HTML mode is far more reliable — unrecognized characters are passed through safely,
+ * so a stray * or _ never causes the entire message to fall back to plain text.
+ *
+ * Supported conversions:
+ *   *bold* / **bold**  → <b>bold</b>
+ *   _italic_           → <i>italic</i>
+ *   `code`             → <code>code</code>
+ *   ```block```        → <pre>block</pre>
+ */
+function markdownToTelegramHtml(text: string): string {
+  const result: string[] = [];
+  const TOKEN =
+    /```([\s\S]*?)```|`([^`]+)`|\*\*([^*]+)\*\*|\*([^*\n]+)\*|_([^_\n]+)_/g;
+
+  let lastIdx = 0;
+  let m: RegExpExecArray | null;
+
+  const esc = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  while ((m = TOKEN.exec(text)) !== null) {
+    if (m.index > lastIdx) {
+      result.push(esc(text.slice(lastIdx, m.index)));
+    }
+
+    if (m[1] !== undefined) {
+      // ```code block```
+      result.push(`<pre>${esc(m[1].replace(/^\n/, ''))}</pre>`);
+    } else if (m[2] !== undefined) {
+      // `inline code`
+      result.push(`<code>${esc(m[2])}</code>`);
+    } else if (m[3] !== undefined) {
+      // **bold**
+      result.push(`<b>${esc(m[3])}</b>`);
+    } else if (m[4] !== undefined) {
+      // *bold*
+      result.push(`<b>${esc(m[4])}</b>`);
+    } else if (m[5] !== undefined) {
+      // _italic_
+      result.push(`<i>${esc(m[5])}</i>`);
+    }
+
+    lastIdx = m.index + m[0].length;
+  }
+
+  if (lastIdx < text.length) {
+    result.push(esc(text.slice(lastIdx)));
+  }
+
+  return result.join('');
+}
+
+/**
+ * Send a Telegram message using HTML parse mode (converted from Markdown).
+ * HTML mode is resilient — stray characters never cause parse failures.
  */
 async function sendTelegramMessage(
   api: { sendMessage: Api['sendMessage'] },
@@ -33,14 +86,15 @@ async function sendTelegramMessage(
   text: string,
   options: { message_thread_id?: number } = {},
 ): Promise<void> {
+  const html = markdownToTelegramHtml(text);
   try {
-    await api.sendMessage(chatId, text, {
+    await api.sendMessage(chatId, html, {
       ...options,
-      parse_mode: 'Markdown',
+      parse_mode: 'HTML',
     });
   } catch (err) {
-    // Fallback: send as plain text if Markdown parsing fails
-    logger.debug({ err }, 'Markdown send failed, falling back to plain text');
+    // Last resort: send original plain text without any parse mode
+    logger.debug({ err }, 'HTML send failed, falling back to plain text');
     await api.sendMessage(chatId, text, options);
   }
 }
@@ -90,7 +144,10 @@ export class TelegramChannel implements Channel {
       const fileUrl = `https://api.telegram.org/file/bot${this.botToken}/${file.file_path}`;
       const resp = await fetch(fileUrl);
       if (!resp.ok) {
-        logger.warn({ fileId, status: resp.status }, 'Telegram file download failed');
+        logger.warn(
+          { fileId, status: resp.status },
+          'Telegram file download failed',
+        );
         return null;
       }
 
@@ -333,7 +390,9 @@ export class TelegramChannel implements Channel {
       const emoji = ctx.message.sticker?.emoji || '';
       storeMedia(ctx, `[Sticker ${emoji}]`);
     });
-    this.bot.on('message:location', (ctx: any) => storeMedia(ctx, '[Location]'));
+    this.bot.on('message:location', (ctx: any) =>
+      storeMedia(ctx, '[Location]'),
+    );
     this.bot.on('message:contact', (ctx: any) => storeMedia(ctx, '[Contact]'));
 
     // Handle errors gracefully
@@ -398,7 +457,11 @@ export class TelegramChannel implements Channel {
     }
   }
 
-  async sendPhoto(jid: string, photoPath: string, caption?: string): Promise<void> {
+  async sendPhoto(
+    jid: string,
+    photoPath: string,
+    caption?: string,
+  ): Promise<void> {
     if (!this.bot) {
       logger.warn('Telegram bot not initialized');
       return;

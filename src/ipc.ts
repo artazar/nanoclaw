@@ -12,7 +12,11 @@ import { RegisteredGroup } from './types.js';
 
 export interface IpcDeps {
   sendMessage: (jid: string, text: string) => Promise<void>;
-  sendPhoto: (jid: string, photoPath: string, caption?: string) => Promise<void>;
+  sendPhoto: (
+    jid: string,
+    photoPath: string,
+    caption?: string,
+  ) => Promise<void>;
   registeredGroups: () => Record<string, RegisteredGroup>;
   registerGroup: (jid: string, group: RegisteredGroup) => void;
   syncGroups: (force: boolean) => Promise<void>;
@@ -93,7 +97,11 @@ export function startIpcWatcher(deps: IpcDeps): void {
                     'Unauthorized IPC message attempt blocked',
                   );
                 }
-              } else if (data.type === 'photo' && data.chatJid && data.photoPath) {
+              } else if (
+                data.type === 'photo' &&
+                data.chatJid &&
+                data.photoPath
+              ) {
                 // Authorization: same as text messages
                 const targetGroup = registeredGroups[data.chatJid];
                 if (

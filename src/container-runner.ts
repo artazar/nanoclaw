@@ -67,15 +67,13 @@ function buildVolumeMounts(
   const groupDir = resolveGroupFolderPath(group.folder);
 
   if (isMain) {
-    // Main gets the project root read-only. Writable paths the agent needs
-    // (store, group folder, IPC, .claude/) are mounted separately below.
-    // Read-only prevents the agent from modifying host application code
-    // (src/, dist/, package.json, etc.) which would bypass the sandbox
-    // entirely on next restart.
+    // Project root mounted read-write so the agent can edit source files,
+    // modify config, and commit changes to the fork directly.
+    // .env is shadowed below so credentials are never exposed.
     mounts.push({
       hostPath: projectRoot,
       containerPath: '/workspace/project',
-      readonly: true,
+      readonly: false,
     });
 
     // Shadow .env so the agent cannot read secrets from the mounted project root.
@@ -212,13 +210,23 @@ function buildVolumeMounts(
     'agent-runner-src',
   );
   if (fs.existsSync(agentRunnerSrc)) {
-    const srcIndex = path.join(agentRunnerSrc, 'index.ts');
+    // Check if any source .ts file is newer than the cached copy.
+    // Comparing only index.ts misses updates to other files (e.g. ipc-mcp-stdio.ts).
+    const srcFiles = fs
+      .readdirSync(agentRunnerSrc)
+      .filter((f) => f.endsWith('.ts'));
+    const newestSrcMtime = srcFiles.reduce((max, f) => {
+      const mtime = fs.statSync(path.join(agentRunnerSrc, f)).mtimeMs;
+      return mtime > max ? mtime : max;
+    }, 0);
     const cachedIndex = path.join(groupAgentRunnerDir, 'index.ts');
+    const cachedMtime = fs.existsSync(cachedIndex)
+      ? fs.statSync(cachedIndex).mtimeMs
+      : 0;
     const needsCopy =
       !fs.existsSync(groupAgentRunnerDir) ||
       !fs.existsSync(cachedIndex) ||
-      (fs.existsSync(srcIndex) &&
-        fs.statSync(srcIndex).mtimeMs > fs.statSync(cachedIndex).mtimeMs);
+      newestSrcMtime > cachedMtime;
     if (needsCopy) {
       fs.cpSync(agentRunnerSrc, groupAgentRunnerDir, { recursive: true });
     }
@@ -260,6 +268,18 @@ async function buildContainerArgs(
   });
   if (onecliApplied) {
     logger.info({ containerName }, 'OneCLI gateway config applied');
+    // On Windows, host.docker.internal:10255 is in the Hyper-V excluded port
+    // range and unreachable from containers. Connect the agent to the onecli
+    // Docker network and redirect the proxy URL to the service name instead.
+    args.push('--network', 'onecli_onecli');
+    for (let i = 0; i < args.length; i++) {
+      if (args[i].includes('host.docker.internal:10255')) {
+        args[i] = args[i].replaceAll(
+          'host.docker.internal:10255',
+          'onecli:10255',
+        );
+      }
+    }
   } else {
     logger.warn(
       { containerName },

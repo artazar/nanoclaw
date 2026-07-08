@@ -78,11 +78,17 @@ export function ensureContainerRuntimeRunning(): void {
 /** Kill orphaned NanoClaw containers from previous runs. */
 export function cleanupOrphans(): void {
   try {
+    // Use --format={{.Names}} without shell quoting to avoid Windows/Git Bash
+    // adding literal quotes into the output string.
     const output = execSync(
-      `${CONTAINER_RUNTIME_BIN} ps --filter name=nanoclaw- --format '{{.Names}}'`,
+      `${CONTAINER_RUNTIME_BIN} ps --filter name=nanoclaw- --format={{.Names}}`,
       { stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf-8' },
     );
-    const orphans = output.trim().split('\n').filter(Boolean);
+    const orphans = output
+      .trim()
+      .split('\n')
+      .map((n) => n.trim().replace(/^'+|'+$/g, ''))
+      .filter(Boolean);
     for (const name of orphans) {
       try {
         stopContainer(name);
