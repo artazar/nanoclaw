@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import os from 'os';
 import path from 'path';
 
@@ -23,6 +24,15 @@ export const SCHEDULER_POLL_INTERVAL = 60000;
 // Absolute paths needed for container mounts
 const PROJECT_ROOT = process.cwd();
 const HOME_DIR = process.env.HOME || os.homedir();
+
+// Unique per install (derived from project root path), so multiple NanoClaw
+// instances running on the same machine don't stop each other's containers
+// during orphan cleanup.
+export const INSTANCE_ID = crypto
+  .createHash('sha256')
+  .update(PROJECT_ROOT)
+  .digest('hex')
+  .slice(0, 8);
 
 // Mount security: allowlist stored OUTSIDE project root, never mounted into containers
 export const MOUNT_ALLOWLIST_PATH = path.join(

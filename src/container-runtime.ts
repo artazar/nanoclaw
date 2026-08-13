@@ -5,6 +5,7 @@
 import { execSync } from 'child_process';
 import os from 'os';
 
+import { INSTANCE_ID } from './config.js';
 import { logger } from './logger.js';
 
 /** The container runtime binary name. */
@@ -75,13 +76,17 @@ export function ensureContainerRuntimeRunning(): void {
   }
 }
 
-/** Kill orphaned NanoClaw containers from previous runs. */
+/**
+ * Kill orphaned NanoClaw containers from previous runs of this instance.
+ * Scoped to this install's INSTANCE_ID so it never touches containers
+ * belonging to a different NanoClaw clone running on the same machine.
+ */
 export function cleanupOrphans(): void {
   try {
     // Use --format={{.Names}} without shell quoting to avoid Windows/Git Bash
     // adding literal quotes into the output string.
     const output = execSync(
-      `${CONTAINER_RUNTIME_BIN} ps --filter name=nanoclaw- --format={{.Names}}`,
+      `${CONTAINER_RUNTIME_BIN} ps --filter name=nanoclaw-${INSTANCE_ID}- --format={{.Names}}`,
       { stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf-8' },
     );
     const orphans = output
