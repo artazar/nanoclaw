@@ -11,6 +11,7 @@ const envConfig = readEnvFile([
   'ASSISTANT_HAS_OWN_NUMBER',
   'ONECLI_URL',
   'TZ',
+  'AGENT_MODEL',
 ]);
 
 export const ASSISTANT_NAME =
@@ -50,6 +51,12 @@ export const SENDER_ALLOWLIST_PATH = path.join(
 export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
 export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
 export const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
+
+// Model the container agent runs on. Accepts a full model ID
+// (e.g. 'claude-opus-5-5') or an alias ('opus', 'sonnet', 'haiku').
+// Unset means the Agent SDK's own default.
+export const AGENT_MODEL =
+  process.env.AGENT_MODEL || envConfig.AGENT_MODEL || undefined;
 
 export const CONTAINER_IMAGE =
   process.env.CONTAINER_IMAGE || 'nanoclaw-agent:latest';

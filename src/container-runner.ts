@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 
 import {
+  AGENT_MODEL,
   CONTAINER_IMAGE,
   CONTAINER_MAX_OUTPUT_SIZE,
   CONTAINER_TIMEOUT,
@@ -44,6 +45,8 @@ export interface ContainerInput {
   isScheduledTask?: boolean;
   assistantName?: string;
   script?: string;
+  /** Model ID or alias for the agent; falls back to AGENT_MODEL config. */
+  model?: string;
 }
 
 export interface ContainerOutput {
@@ -158,6 +161,15 @@ function buildVolumeMounts(
             // Enable Claude's memory feature (persists user preferences between sessions)
             // https://code.claude.com/docs/en/memory#manage-auto-memory
             CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
+          },
+          permissions: {
+            // The SDK's built-in cron tools schedule against the session, not
+            // the host DB — they silently die when the container exits (see
+            // "Session-only ... dies when Claude exits" in their own tool
+            // results). Blocked so agents are forced onto
+            // mcp__nanoclaw__schedule_task, which persists in store/messages.db
+            // and survives container/session churn.
+            deny: ['CronCreate', 'CronList', 'CronDelete', 'CronRun'],
           },
         },
         null,
@@ -376,7 +388,9 @@ export async function runContainerAgent(
     let stdoutTruncated = false;
     let stderrTruncated = false;
 
-    container.stdin.write(JSON.stringify(input));
+    container.stdin.write(
+      JSON.stringify({ ...input, model: input.model ?? AGENT_MODEL }),
+    );
     container.stdin.end();
 
     // Streaming output: parse OUTPUT_START/END marker pairs as they arrive
