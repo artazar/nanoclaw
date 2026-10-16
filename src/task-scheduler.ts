@@ -21,6 +21,12 @@ import { resolveGroupFolderPath } from './group-folder.js';
 import { logger } from './logger.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
 
+// Failed task runs are retried with exponential backoff (1m, 2m, 4m...)
+// before giving up and notifying the user, so a transient container/agent
+// error doesn't silently drop a reminder.
+const MAX_TASK_RETRIES = 3;
+const TASK_RETRY_BASE_MS = 60_000;
+
 /**
  * Compute the next run time for a recurring task, anchored to the
  * task's scheduled time rather than Date.now() to prevent cumulative
@@ -231,13 +237,55 @@ async function runTask(
     error,
   });
 
+  if (error) {
+    const retryCount = (task.retry_count || 0) + 1;
+
+    if (retryCount <= MAX_TASK_RETRIES) {
+      const delayMs = TASK_RETRY_BASE_MS * Math.pow(2, retryCount - 1);
+      const retryAt = new Date(Date.now() + delayMs).toISOString();
+      logger.warn(
+        { taskId: task.id, retryCount, delayMs, error },
+        'Task failed, scheduling retry',
+      );
+      updateTaskAfterRun(
+        task.id,
+        retryAt,
+        `Retry ${retryCount}/${MAX_TASK_RETRIES} scheduled after error: ${error}`,
+        retryCount,
+      );
+      return;
+    }
+
+    // Retries exhausted — let the user know it didn't just silently vanish.
+    logger.error(
+      { taskId: task.id, retryCount, error },
+      'Task failed after max retries, giving up',
+    );
+    try {
+      await deps.sendMessage(
+        task.chat_jid,
+        `Reminder failed after ${MAX_TASK_RETRIES} retries and could not be delivered.\nPrompt: "${task.prompt}"\nLast error: ${error}`,
+      );
+    } catch (sendErr) {
+      logger.error(
+        { taskId: task.id, sendErr },
+        'Failed to send task-failure notice',
+      );
+    }
+
+    const nextRun = computeNextRun(task);
+    updateTaskAfterRun(
+      task.id,
+      nextRun,
+      `Failed after ${MAX_TASK_RETRIES} retries: ${error}`,
+      0,
+    );
+    return;
+  }
+
   const nextRun = computeNextRun(task);
-  const resultSummary = error
-    ? `Error: ${error}`
-    : result
-      ? result.slice(0, 200)
-      : 'Completed';
-  updateTaskAfterRun(task.id, nextRun, resultSummary);
+  const resultSummary = result ? result.slice(0, 200) : 'Completed';
+  updateTaskAfterRun(task.id, nextRun, resultSummary, 0);
 }
 
 let schedulerRunning = false;

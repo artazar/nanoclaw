@@ -271,6 +271,14 @@ The task will run in that group's context with access to their files and memory.
 
 ---
 
+## Reminders Must Use `mcp__nanoclaw__schedule_task`
+
+Never use the `CronCreate`/`CronList`/`CronDelete`/`CronRun` tools for reminders or scheduled tasks, even though they may appear available. Those are session-scoped SDK tools — they say "durable" but their own results admit "session-only ... dies when Claude exits." Every task container is ephemeral and gets torn down after each run, so anything scheduled with them is silently lost and will never fire.
+
+Always use `mcp__nanoclaw__schedule_task` instead — it writes to the host's SQLite DB (`store/messages.db`) via IPC and survives container and process restarts. If you ever find yourself reaching for a tool literally named `Cron*`, stop and use `schedule_task`.
+
+---
+
 ## Task Scripts
 
 For any recurring task, use `schedule_task`. Frequent agent invocations — especially multiple times a day — consume API credits and can risk account restrictions. If a simple check can determine whether action is needed, add a `script` — it runs first, and the agent is only called when the check passes. This keeps invocations to a minimum.

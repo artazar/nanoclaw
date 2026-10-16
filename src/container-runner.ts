@@ -163,6 +163,15 @@ function buildVolumeMounts(
             // https://code.claude.com/docs/en/memory#manage-auto-memory
             CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
           },
+          permissions: {
+            // The SDK's built-in cron tools schedule against the session, not
+            // the host DB — they silently die when the container exits (see
+            // "Session-only ... dies when Claude exits" in their own tool
+            // results). Blocked so agents are forced onto
+            // mcp__nanoclaw__schedule_task, which persists in store/messages.db
+            // and survives container/session churn.
+            deny: ['CronCreate', 'CronList', 'CronDelete', 'CronRun'],
+          },
         },
         null,
         2,

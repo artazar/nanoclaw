@@ -1,5 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('./config.js', () => ({
+  ASSISTANT_NAME: 'TestBot',
+  SCHEDULER_POLL_INTERVAL: 60_000,
+  TIMEZONE: 'UTC',
+  GROUPS_DIR: '/tmp/nanoclaw-test-groups',
+  DATA_DIR: '/tmp/nanoclaw-test-data',
+}));
+
+vi.mock('./container-runner.js', () => ({
+  runContainerAgent: vi.fn(),
+  writeTasksSnapshot: vi.fn(),
+}));
+
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs');
+  return {
+    ...actual,
+    default: { ...actual, mkdirSync: vi.fn() },
+    mkdirSync: vi.fn(),
+  };
+});
+
+import { runContainerAgent } from './container-runner.js';
 import { _initTestDatabase, createTask, getTaskById } from './db.js';
 import {
   _resetSchedulerLoopForTests,
@@ -12,10 +35,79 @@ describe('task scheduler', () => {
     _initTestDatabase();
     _resetSchedulerLoopForTests();
     vi.useFakeTimers();
+    vi.mocked(runContainerAgent).mockReset();
   });
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('retries a failed once-task with backoff instead of dropping it, then notifies the user after exhausting retries', async () => {
+    vi.mocked(runContainerAgent).mockResolvedValue({
+      status: 'error',
+      result: null,
+      error: 'boom',
+    });
+
+    createTask({
+      id: 'retry-test',
+      group_folder: 'test-group',
+      chat_jid: 'chat@g.us',
+      prompt: 'remind me',
+      schedule_type: 'once',
+      schedule_value: '2026-01-01T00:00:00.000Z',
+      context_mode: 'isolated',
+      next_run: new Date(Date.now() - 1000).toISOString(),
+      status: 'active',
+      created_at: '2026-01-01T00:00:00.000Z',
+    });
+
+    const enqueueTask = vi.fn(
+      (_groupJid: string, _taskId: string, fn: () => Promise<void>) => {
+        void fn();
+      },
+    );
+    const sendMessage = vi.fn(async () => {});
+
+    startSchedulerLoop({
+      registeredGroups: () => ({
+        'chat@g.us': {
+          folder: 'test-group',
+          name: 'Test',
+          isMain: false,
+        } as any,
+      }),
+      getSessions: () => ({}),
+      queue: {
+        enqueueTask,
+        closeStdin: vi.fn(),
+        notifyIdle: vi.fn(),
+      } as any,
+      onProcess: () => {},
+      sendMessage,
+    });
+
+    // First attempt fails immediately (task was already due).
+    await vi.advanceTimersByTimeAsync(10);
+    let task = getTaskById('retry-test');
+    expect(task?.status).toBe('active');
+    expect(task?.retry_count).toBe(1);
+    expect(sendMessage).not.toHaveBeenCalled();
+
+    // Backoff schedule is 1m, 2m, 4m — advance well past all of them plus
+    // the poll interval so every retry (and the final give-up) fires.
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+    task = getTaskById('retry-test');
+    // 1 initial attempt + 3 retries (MAX_TASK_RETRIES) before giving up.
+    expect(runContainerAgent).toHaveBeenCalledTimes(4);
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledWith(
+      'chat@g.us',
+      expect.stringContaining('Reminder failed'),
+    );
+    expect(task?.status).toBe('completed');
+    expect(task?.retry_count).toBe(0);
   });
 
   it('pauses due tasks with invalid group folders to prevent retry churn', async () => {
