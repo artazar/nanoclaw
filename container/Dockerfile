@@ -57,6 +57,17 @@ COPY scripts/make-pdf.js /opt/create-pdf/make-pdf.js
 COPY scripts/create-pdf.sh /usr/local/bin/create-pdf
 RUN chmod +x /usr/local/bin/create-pdf
 
+# Video assembly: compose slides/images/clips with ffmpeg (installed above
+# for transcribe) and render Markdown slides to frames with the same
+# Chromium create-pdf uses. node_modules is shared with create-pdf rather
+# than installed twice - make-slides.js needs the same marked +
+# puppeteer-core.
+RUN mkdir -p /opt/create-video \
+    && ln -s /opt/create-pdf/node_modules /opt/create-video/node_modules
+COPY scripts/make-slides.js /opt/create-video/make-slides.js
+COPY scripts/create-video.sh /usr/local/bin/create-video
+RUN chmod +x /usr/local/bin/create-video
+
 # Set Chromium path for agent-browser
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
