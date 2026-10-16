@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 
 import {
+  AGENT_MODEL,
   CONTAINER_IMAGE,
   CONTAINER_MAX_OUTPUT_SIZE,
   CONTAINER_TIMEOUT,
@@ -23,6 +24,7 @@ import {
   CONTAINER_RUNTIME_BIN,
   hostGatewayArgs,
   readonlyMountArgs,
+  resourceLimitArgs,
   stopContainer,
 } from './container-runtime.js';
 import { OneCLI } from '@onecli-sh/sdk';
@@ -44,6 +46,8 @@ export interface ContainerInput {
   isScheduledTask?: boolean;
   assistantName?: string;
   script?: string;
+  /** Model ID or alias for the agent; falls back to AGENT_MODEL config. */
+  model?: string;
 }
 
 export interface ContainerOutput {
@@ -291,6 +295,10 @@ async function buildContainerArgs(
   // Runtime-specific args for host gateway resolution
   args.push(...hostGatewayArgs());
 
+  // Cap per-container CPU so a runaway agent process can't peg the host
+  // and take the container runtime down with it.
+  args.push(...resourceLimitArgs());
+
   // Run as host user so bind-mounted files are accessible.
   // Skip when running as root (uid 0), as the container's node user (uid 1000),
   // or when getuid is unavailable (native Windows without WSL).
@@ -376,7 +384,9 @@ export async function runContainerAgent(
     let stdoutTruncated = false;
     let stderrTruncated = false;
 
-    container.stdin.write(JSON.stringify(input));
+    container.stdin.write(
+      JSON.stringify({ ...input, model: input.model ?? AGENT_MODEL }),
+    );
     container.stdin.end();
 
     // Streaming output: parse OUTPUT_START/END marker pairs as they arrive

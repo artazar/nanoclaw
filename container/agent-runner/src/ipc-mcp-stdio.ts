@@ -101,6 +101,44 @@ server.tool(
 );
 
 server.tool(
+  'send_document',
+  'Send a file (PDF, zip, docx, etc.) to the user or group as a document attachment. Save the file to /workspace/group/attachments/ first, then call this tool with the path. Supports an optional caption with Telegram Markdown formatting. Not for images — use send_photo for those. Telegram caps document uploads at 50MB.',
+  {
+    file_path: z
+      .string()
+      .describe('Absolute path to the file, e.g. /workspace/group/attachments/report.pdf'),
+    filename: z
+      .string()
+      .optional()
+      .describe('Optional display filename shown to the recipient (defaults to the actual filename).'),
+    caption: z
+      .string()
+      .optional()
+      .describe('Optional caption for the document. Supports Telegram Markdown formatting.'),
+    sender: z
+      .string()
+      .optional()
+      .describe('Your role/identity name (e.g. "Researcher"). When set, appears from a dedicated bot in Telegram.'),
+  },
+  async (args) => {
+    const data: Record<string, string | undefined> = {
+      type: 'document',
+      chatJid,
+      documentPath: args.file_path,
+      filename: args.filename || undefined,
+      caption: args.caption || undefined,
+      sender: args.sender || undefined,
+      groupFolder,
+      timestamp: new Date().toISOString(),
+    };
+
+    writeIpcFile(MESSAGES_DIR, data);
+
+    return { content: [{ type: 'text' as const, text: 'Document queued for sending.' }] };
+  },
+);
+
+server.tool(
   'schedule_task',
   `Schedule a recurring or one-time task. The task will run as a full agent with access to all tools. Returns the task ID for future reference. To modify an existing task, use update_task instead.
 

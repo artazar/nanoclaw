@@ -8,6 +8,8 @@ const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
 
 // Mock config
 vi.mock('./config.js', () => ({
+  AGENT_MODEL: undefined,
+  CONTAINER_CPU_LIMIT: '1',
   CONTAINER_IMAGE: 'nanoclaw-agent:latest',
   CONTAINER_MAX_OUTPUT_SIZE: 10485760,
   CONTAINER_TIMEOUT: 1800000, // 30min
@@ -57,6 +59,7 @@ vi.mock('./container-runtime.js', () => ({
   CONTAINER_RUNTIME_BIN: 'docker',
   hostGatewayArgs: () => [],
   readonlyMountArgs: (h: string, c: string) => ['-v', `${h}:${c}:ro`],
+  resourceLimitArgs: () => ['--cpus', '1'],
   stopContainer: vi.fn(),
 }));
 

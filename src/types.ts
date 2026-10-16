@@ -90,6 +90,13 @@ export interface Channel {
   sendMessage(jid: string, text: string): Promise<void>;
   // Optional: send a photo/image file. photoPath is the host filesystem path.
   sendPhoto?(jid: string, photoPath: string, caption?: string): Promise<void>;
+  // Optional: send an arbitrary file as a document/attachment. filePath is the host filesystem path.
+  sendDocument?(
+    jid: string,
+    filePath: string,
+    caption?: string,
+    filename?: string,
+  ): Promise<void>;
   isConnected(): boolean;
   ownsJid(jid: string): boolean;
   disconnect(): Promise<void>;

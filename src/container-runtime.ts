@@ -5,7 +5,7 @@
 import { execSync } from 'child_process';
 import os from 'os';
 
-import { INSTANCE_ID } from './config.js';
+import { CONTAINER_CPU_LIMIT, INSTANCE_ID } from './config.js';
 import { logger } from './logger.js';
 
 /** The container runtime binary name. */
@@ -18,6 +18,11 @@ export function hostGatewayArgs(): string[] {
     return ['--add-host=host.docker.internal:host-gateway'];
   }
   return [];
+}
+
+/** CLI args capping CPU usage so a runaway agent can't starve the host. */
+export function resourceLimitArgs(): string[] {
+  return ['--cpus', CONTAINER_CPU_LIMIT];
 }
 
 /** Returns CLI args for a readonly bind mount. */

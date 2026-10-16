@@ -726,6 +726,14 @@ async function main(): Promise<void> {
       }
       logger.warn({ jid }, 'Channel does not support sendPhoto');
     },
+    sendDocument: async (jid, filePath, caption, filename) => {
+      const channel = findChannel(channels, jid);
+      if (!channel) throw new Error(`No channel for JID: ${jid}`);
+      if (channel.sendDocument) {
+        return channel.sendDocument(jid, filePath, caption, filename);
+      }
+      logger.warn({ jid }, 'Channel does not support sendDocument');
+    },
     registeredGroups: () => registeredGroups,
     registerGroup,
     syncGroups: async (force: boolean) => {

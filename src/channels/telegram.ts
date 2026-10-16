@@ -479,6 +479,29 @@ export class TelegramChannel implements Channel {
     }
   }
 
+  async sendDocument(
+    jid: string,
+    filePath: string,
+    caption?: string,
+    filename?: string,
+  ): Promise<void> {
+    if (!this.bot) {
+      logger.warn('Telegram bot not initialized');
+      return;
+    }
+    try {
+      const numericId = jid.replace(/^tg:/, '');
+      const inputFile = new InputFile(filePath, filename);
+      await this.bot.api.sendDocument(numericId, inputFile, {
+        caption: caption || undefined,
+        parse_mode: caption ? 'Markdown' : undefined,
+      });
+      logger.info({ jid, filePath }, 'Telegram document sent');
+    } catch (err) {
+      logger.error({ jid, filePath, err }, 'Failed to send Telegram document');
+    }
+  }
+
   isConnected(): boolean {
     return this.bot !== null;
   }
