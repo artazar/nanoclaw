@@ -23,6 +23,11 @@ export interface IpcDeps {
     caption?: string,
     filename?: string,
   ) => Promise<void>;
+  sendVideo: (
+    jid: string,
+    videoPath: string,
+    caption?: string,
+  ) => Promise<void>;
   registeredGroups: () => Record<string, RegisteredGroup>;
   registerGroup: (jid: string, group: RegisteredGroup) => void;
   syncGroups: (force: boolean) => Promise<void>;
@@ -168,6 +173,37 @@ export function startIpcWatcher(deps: IpcDeps): void {
                   logger.warn(
                     { chatJid: data.chatJid, sourceGroup },
                     'Unauthorized IPC document attempt blocked',
+                  );
+                }
+              } else if (
+                data.type === 'video' &&
+                data.chatJid &&
+                data.videoPath
+              ) {
+                // Authorization: same as text messages
+                const targetGroup = registeredGroups[data.chatJid];
+                if (
+                  isMain ||
+                  (targetGroup && targetGroup.folder === sourceGroup)
+                ) {
+                  // Translate container path (/workspace/group/...) to host path
+                  const containerPrefix = '/workspace/group/';
+                  let hostPath: string = data.videoPath;
+                  if (data.videoPath.startsWith(containerPrefix)) {
+                    hostPath = path.join(
+                      resolveGroupFolderPath(sourceGroup),
+                      data.videoPath.slice(containerPrefix.length),
+                    );
+                  }
+                  await deps.sendVideo(data.chatJid, hostPath, data.caption);
+                  logger.info(
+                    { chatJid: data.chatJid, sourceGroup, hostPath },
+                    'IPC video sent',
+                  );
+                } else {
+                  logger.warn(
+                    { chatJid: data.chatJid, sourceGroup },
+                    'Unauthorized IPC video attempt blocked',
                   );
                 }
               }

@@ -98,6 +98,8 @@ export interface Channel {
     caption?: string,
     filename?: string,
   ): Promise<void>;
+  // Optional: send a video as playable inline media. videoPath is the host filesystem path.
+  sendVideo?(jid: string, videoPath: string, caption?: string): Promise<void>;
   isConnected(): boolean;
   ownsJid(jid: string): boolean;
   disconnect(): Promise<void>;

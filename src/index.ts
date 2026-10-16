@@ -734,6 +734,22 @@ async function main(): Promise<void> {
       }
       logger.warn({ jid }, 'Channel does not support sendDocument');
     },
+    sendVideo: async (jid, videoPath, caption) => {
+      const channel = findChannel(channels, jid);
+      if (!channel) throw new Error(`No channel for JID: ${jid}`);
+      if (channel.sendVideo) {
+        return channel.sendVideo(jid, videoPath, caption);
+      }
+      // Fall back to a document so the file still arrives, just not inline.
+      if (channel.sendDocument) {
+        logger.warn(
+          { jid },
+          'Channel does not support sendVideo, sending as document',
+        );
+        return channel.sendDocument(jid, videoPath, caption);
+      }
+      logger.warn({ jid }, 'Channel does not support sendVideo');
+    },
     registeredGroups: () => registeredGroups,
     registerGroup,
     syncGroups: async (force: boolean) => {

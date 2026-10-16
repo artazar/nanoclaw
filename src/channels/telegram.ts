@@ -502,6 +502,31 @@ export class TelegramChannel implements Channel {
     }
   }
 
+  async sendVideo(
+    jid: string,
+    videoPath: string,
+    caption?: string,
+  ): Promise<void> {
+    if (!this.bot) {
+      logger.warn('Telegram bot not initialized');
+      return;
+    }
+    try {
+      const numericId = jid.replace(/^tg:/, '');
+      const inputFile = new InputFile(videoPath);
+      // supports_streaming lets clients start playback before the whole file
+      // has downloaded; without it Telegram serves it as a plain attachment.
+      await this.bot.api.sendVideo(numericId, inputFile, {
+        caption: caption || undefined,
+        parse_mode: caption ? 'Markdown' : undefined,
+        supports_streaming: true,
+      });
+      logger.info({ jid, videoPath }, 'Telegram video sent');
+    } catch (err) {
+      logger.error({ jid, videoPath, err }, 'Failed to send Telegram video');
+    }
+  }
+
   isConnected(): boolean {
     return this.bot !== null;
   }

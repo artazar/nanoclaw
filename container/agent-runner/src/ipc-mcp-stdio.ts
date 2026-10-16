@@ -139,6 +139,39 @@ server.tool(
 );
 
 server.tool(
+  'send_video',
+  'Send a video to the user or group as playable inline media. Save or render the file to /workspace/group/attachments/ first, then call this tool with the path. Use create-video to produce one. Supports an optional caption with Telegram Markdown formatting. Telegram caps uploads at 50MB; mp4 (H.264 + AAC) plays everywhere, other containers may arrive as a plain file.',
+  {
+    file_path: z
+      .string()
+      .describe('Absolute path to the video, e.g. /workspace/group/attachments/update.mp4'),
+    caption: z
+      .string()
+      .optional()
+      .describe('Optional caption for the video. Supports Telegram Markdown formatting.'),
+    sender: z
+      .string()
+      .optional()
+      .describe('Your role/identity name (e.g. "Researcher"). When set, appears from a dedicated bot in Telegram.'),
+  },
+  async (args) => {
+    const data: Record<string, string | undefined> = {
+      type: 'video',
+      chatJid,
+      videoPath: args.file_path,
+      caption: args.caption || undefined,
+      sender: args.sender || undefined,
+      groupFolder,
+      timestamp: new Date().toISOString(),
+    };
+
+    writeIpcFile(MESSAGES_DIR, data);
+
+    return { content: [{ type: 'text' as const, text: 'Video queued for sending.' }] };
+  },
+);
+
+server.tool(
   'schedule_task',
   `Schedule a recurring or one-time task. The task will run as a full agent with access to all tools. Returns the task ID for future reference. To modify an existing task, use update_task instead.
 
